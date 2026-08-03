@@ -4,13 +4,15 @@ Routes requests to appropriate handlers for CRUD operations.
 """
 
 import base64
+import binascii
 import json
 import os
 import uuid
-import boto3
-from botocore.exceptions import ClientError
-from decimal import Decimal
 from datetime import datetime, timezone
+from decimal import Decimal
+
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 dynamodb = boto3.resource("dynamodb")
 s3 = boto3.client("s3")
@@ -113,7 +115,7 @@ def get_user_id(event: dict) -> str:
             sub = payload.get("sub", "")
             if sub:
                 return sub
-        except Exception as e:
+        except (AttributeError, IndexError, TypeError, ValueError, binascii.Error) as e:
             print(f"JWT decode error: {e}")
 
     return "anonymous"
@@ -155,12 +157,12 @@ def handle_get_applications(event: dict) -> dict:
     )
 
     table = dynamodb.Table(APPLICATIONS_TABLE)
-    query_kwargs: dict = dict(
-        KeyConditionExpression="userId = :uid",
-        ExpressionAttributeValues={":uid": user_id},
-        ScanIndexForward=False,  # newest first
-        Limit=limit,
-    )
+    query_kwargs: dict = {
+        "KeyConditionExpression": "userId = :uid",
+        "ExpressionAttributeValues": {":uid": user_id},
+        "ScanIndexForward": False,  # newest first
+        "Limit": limit,
+    }
     if exclusive_start:
         query_kwargs["ExclusiveStartKey"] = exclusive_start
 
@@ -193,7 +195,7 @@ def handle_get_applications(event: dict) -> dict:
                 )
                 for item in resp.get("Responses", {}).get(JOBS_TABLE, []):
                     job_urls[item["jobId"]] = item.get("url", "")
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 print(f"batch_get_item failed (non-fatal): {e}")
 
         for app in applications:
