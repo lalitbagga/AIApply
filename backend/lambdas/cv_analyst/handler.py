@@ -7,6 +7,7 @@ and stores the result in DynamoDB.
 import io
 import json
 import os
+from datetime import datetime, timezone
 
 import anthropic
 import boto3
@@ -206,6 +207,23 @@ def lambda_handler(event, context):
 
         # Store in DynamoDB
         table = dynamodb.Table(CVS_TABLE)
+
+        # Only the most recently uploaded CV is primary. Keep older records so
+        # submitted applications retain their history, but stop selecting them
+        # for new tailoring work.
+        existing_cvs = table.query(
+            KeyConditionExpression="userId = :uid",
+            ExpressionAttributeValues={":uid": user_id},
+            ProjectionExpression="userId, cvId",
+        ).get("Items", [])
+        for existing_cv in existing_cvs:
+            if existing_cv.get("cvId") != cv_id:
+                table.update_item(
+                    Key={"userId": user_id, "cvId": existing_cv["cvId"]},
+                    UpdateExpression="SET isPrimary = :false",
+                    ExpressionAttributeValues={":false": False},
+                )
+
         table.put_item(
             Item={
                 "userId": user_id,
@@ -219,6 +237,7 @@ def lambda_handler(event, context):
                 "experienceYears": str(structured_data.get("totalYearsExperience", 0)),
                 "seniorityLevel": structured_data.get("seniorityLevel", ""),
                 "isPrimary": True,
+                "uploadedAt": datetime.now(timezone.utc).isoformat(),
             }
         )
 

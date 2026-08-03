@@ -449,14 +449,25 @@ export default function ApplicationDetailClient() {
                   </Button>
                 </div>
               ) : (
-                /* All other statuses: show Approve CV */
-                <Button
-                  className="flex-1"
-                  disabled={!canApprove || approving}
-                  onClick={handleApprove}
-                >
-                  {approving ? "Saving…" : isSubmitted ? "✓ CV Approved" : "✓ Approve CV"}
-                </Button>
+                <div className="flex flex-1 gap-2">
+                  <Button
+                    className="flex-1"
+                    disabled={!canApprove || approving}
+                    onClick={handleApprove}
+                  >
+                    {approving ? "Saving…" : isSubmitted ? "✓ CV Approved" : "✓ Approve CV"}
+                  </Button>
+                  {canApprove && (
+                    <Button
+                      className="flex-1"
+                      variant="outline"
+                      disabled={tailoring}
+                      onClick={handleTailor}
+                    >
+                      {tailoring ? "⏳ Re-tailoring…" : "↻ Re-tailor with Latest CV"}
+                    </Button>
+                  )}
+                </div>
               )}
               <Button variant="ghost" onClick={() => router.push("/dashboard")}>← Back</Button>
               {!isSubmitted && (
