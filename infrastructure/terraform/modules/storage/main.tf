@@ -8,7 +8,7 @@ variable "environment" {
 
 # --- S3 Bucket for CV uploads and generated documents ---
 resource "aws_s3_bucket" "cv_storage" {
-  bucket = "${var.prefix}-cv-storage"
+  bucket = "${var.prefix}-cv-storage-924029800762"
 }
 
 resource "aws_s3_bucket_versioning" "cv_storage" {

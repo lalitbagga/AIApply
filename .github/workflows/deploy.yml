@@ -60,6 +60,17 @@ jobs:
             fi
           done
 
+      - name: Upload nested routes without .html extension (payment/success, payment/cancel)
+        run: |
+          for htmlfile in frontend/out/payment/*.html; do
+            [ -f "$htmlfile" ] || continue
+            filename=$(basename "$htmlfile" .html)
+            aws s3 cp "$htmlfile" \
+              "s3://${{ vars.FRONTEND_BUCKET }}/payment/$filename" \
+              --content-type "text/html" \
+              --cache-control "no-cache, no-store, must-revalidate"
+          done
+
       - name: Invalidate CloudFront
         run: aws cloudfront create-invalidation --distribution-id ${{ vars.CLOUDFRONT_DIST_ID }} --paths "/*"
 
@@ -144,10 +155,11 @@ jobs:
             fi
           }
 
-          # --- api (no extra deps — boto3 is built into Lambda runtime) ---
+          # --- api (stripe for payment handling) ---
           echo "=== api ==="
           PKG="$BUILD_DIR/api" && mkdir -p "$PKG"
           cp backend/lambdas/api/handler.py "$PKG/"
+          pip_lambda "$PKG" stripe
           (cd "$PKG" && zip -r "$BUILD_DIR/api.zip" . -q)
           deploy_lambda "$PREFIX-api-handler" "$BUILD_DIR/api.zip"
 

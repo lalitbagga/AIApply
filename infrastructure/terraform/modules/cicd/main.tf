@@ -87,8 +87,8 @@ resource "aws_iam_role_policy" "github_deploy" {
           "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"
         ]
         Resource = [
-          "arn:aws:s3:::aiapply-terraform-state",
-          "arn:aws:s3:::aiapply-terraform-state/*",
+          "arn:aws:s3:::aiapply-terraform-state-924029800762",
+          "arn:aws:s3:::aiapply-terraform-state-924029800762/*",
           "arn:aws:dynamodb:*:*:table/terraform-locks"
         ]
       },

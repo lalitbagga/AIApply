@@ -19,6 +19,9 @@ env:
   TF_WORKING_DIR: infrastructure/terraform/environments/dev
   # Terraform reads TF_VAR_* env vars automatically — avoids interactive prompt
   TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+  TF_VAR_stripe_secret_key: ${{ secrets.STRIPE_SECRET_KEY }}
+  TF_VAR_stripe_webhook_secret: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+  TF_VAR_frontend_url: ${{ vars.CLOUDFRONT_URL }}
 
 jobs:
   plan:

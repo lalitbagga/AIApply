@@ -35,8 +35,11 @@ module "api" {
   source            = "../../modules/api"
   prefix            = local.prefix
   environment       = var.environment
-  anthropic_api_key = var.anthropic_api_key
-  cv_bucket_name    = module.storage.cv_bucket_name
+  anthropic_api_key     = var.anthropic_api_key
+  stripe_secret_key     = var.stripe_secret_key
+  stripe_webhook_secret = var.stripe_webhook_secret
+  frontend_url          = var.frontend_url
+  cv_bucket_name        = module.storage.cv_bucket_name
   cv_bucket_arn     = module.storage.cv_bucket_arn
   dynamodb_table_arns = module.storage.dynamodb_table_arns
   sqs_queue_arns          = [module.queue.job_scout_queue_arn, module.queue.cv_tailor_queue_arn]

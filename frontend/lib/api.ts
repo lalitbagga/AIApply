@@ -111,3 +111,8 @@ export async function scanJobs() {
 export async function deleteAccount() {
   return apiFetch("/api/account", { method: "DELETE" });
 }
+
+// --- Payments ---
+export async function createCheckoutSession(): Promise<{ checkoutUrl: string }> {
+  return apiFetch("/api/payments/create-checkout", { method: "POST" });
+}

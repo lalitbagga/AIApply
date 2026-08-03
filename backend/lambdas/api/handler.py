@@ -8,17 +8,48 @@ import json
 import os
 import uuid
 import boto3
+from botocore.exceptions import ClientError
 from decimal import Decimal
 from datetime import datetime, timezone
 
 dynamodb = boto3.resource("dynamodb")
 s3 = boto3.client("s3")
 sqs = boto3.client("sqs")
+ssm = boto3.client("ssm")
 
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 CV_BUCKET = os.environ.get("CV_BUCKET", "aiapply-dev-cv-storage")
 SQS_JOB_SCOUT_URL = os.environ.get("SQS_JOB_SCOUT_URL", "")
 SQS_CV_TAILOR_URL = os.environ.get("SQS_CV_TAILOR_URL", "")
+STRIPE_SECRET_PARAM_NAME = os.environ.get("STRIPE_SECRET_PARAM_NAME", "")
+STRIPE_WEBHOOK_PARAM_NAME = os.environ.get("STRIPE_WEBHOOK_PARAM_NAME", "")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
+# Module-level cache — SSM called once per Lambda cold start
+_stripe_secret_key = None
+_stripe_webhook_secret = None
+
+
+def get_stripe_secret_key() -> str:
+    global _stripe_secret_key
+    if _stripe_secret_key is None:
+        if STRIPE_SECRET_PARAM_NAME:
+            param = ssm.get_parameter(Name=STRIPE_SECRET_PARAM_NAME, WithDecryption=True)
+            _stripe_secret_key = param["Parameter"]["Value"]
+        else:
+            _stripe_secret_key = os.environ.get("STRIPE_SECRET_KEY", "")
+    return _stripe_secret_key
+
+
+def get_stripe_webhook_secret() -> str:
+    global _stripe_webhook_secret
+    if _stripe_webhook_secret is None:
+        if STRIPE_WEBHOOK_PARAM_NAME:
+            param = ssm.get_parameter(Name=STRIPE_WEBHOOK_PARAM_NAME, WithDecryption=True)
+            _stripe_webhook_secret = param["Parameter"]["Value"]
+        else:
+            _stripe_webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+    return _stripe_webhook_secret
 
 # Table references
 USERS_TABLE = f"aiapply-{ENVIRONMENT}-users"
@@ -230,19 +261,26 @@ def handle_save_career_goals(event: dict) -> dict:
     body = json.loads(event.get("body", "{}"))
 
     table = dynamodb.Table(USERS_TABLE)
-    table.put_item(
-        Item={
-            "userId": user_id,
-            "careerGoals": {
-                "targetRoles": body.get("targetRoles", []),
-                "targetIndustries": body.get("targetIndustries", []),
-                "minSalary": body.get("minSalary"),
-                "maxSalary": body.get("maxSalary"),
-                "locations": body.get("locations", []),
-                "workArrangement": body.get("workArrangement", ["remote"]),
-                "dealbreakers": body.get("dealbreakers", []),
-            },
-        }
+    # Use update_item (not put_item) so existing fields like creditsBalance
+    # and usage stats are preserved when the user updates their career goals.
+    goals = {
+        "targetRoles": body.get("targetRoles", []),
+        "targetIndustries": body.get("targetIndustries", []),
+        "locations": body.get("locations", []),
+        "workArrangement": body.get("workArrangement", ["remote"]),
+        "dealbreakers": body.get("dealbreakers", []),
+        "minMatchScore": body.get("minMatchScore", 70),
+        "minAlignmentScore": body.get("minAlignmentScore", 70),
+        "jobWindowHours": body.get("jobWindowHours", 72),
+    }
+    if body.get("minSalary") is not None:
+        goals["minSalary"] = body["minSalary"]
+    if body.get("maxSalary") is not None:
+        goals["maxSalary"] = body["maxSalary"]
+    table.update_item(
+        Key={"userId": user_id},
+        UpdateExpression="SET careerGoals = :goals",
+        ExpressionAttributeValues={":goals": goals},
     )
 
     # Trigger job scout for the user's primary CV
@@ -288,6 +326,7 @@ def handle_get_career_goals(event: dict) -> dict:
         "careerGoals": item.get("careerGoals", {}),
         "lastScannedAt": item.get("lastScannedAt"),
         "usage": usage,
+        "creditsBalance": int(item.get("creditsBalance", 0)),
     })
 
 
@@ -337,6 +376,20 @@ def handle_tailor_application(event: dict) -> dict:
 
     if not application_id:
         return response(400, {"error": "applicationId required"})
+
+    # Atomically check and deduct one credit — fails if balance is 0 or missing
+    users_table = dynamodb.Table(USERS_TABLE)
+    try:
+        users_table.update_item(
+            Key={"userId": user_id},
+            UpdateExpression="ADD creditsBalance :neg",
+            ConditionExpression="creditsBalance >= :one",
+            ExpressionAttributeValues={":neg": Decimal("-1"), ":one": Decimal("1")},
+        )
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return response(402, {"error": "No credits remaining. Purchase credits to tailor more CVs."})
+        raise
 
     # Fetch the application to get cvId and jobId for the SQS message
     table = dynamodb.Table(APPLICATIONS_TABLE)
@@ -661,6 +714,78 @@ def handle_get_tailored_cv(event: dict) -> dict:
     return response(200, {"tailoredCV": cv_data})
 
 
+def handle_create_checkout(event: dict) -> dict:
+    """POST /api/payments/create-checkout — Create a Stripe Checkout session."""
+    import stripe  # lazy import — only loaded for payment requests
+
+    user_id = get_user_id(event)
+    if user_id == "anonymous":
+        return response(401, {"error": "Unauthorized"})
+
+    stripe.api_key = get_stripe_secret_key()
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {"name": "CV Tailoring Credits (3 tailors)"},
+                    "unit_amount": 100,  # $1.00 in cents
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            success_url=f"{FRONTEND_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{FRONTEND_URL}/payment/cancel",
+            client_reference_id=user_id,
+            metadata={"user_id": user_id, "credits": "3"},
+        )
+        return response(200, {"checkoutUrl": session.url})
+    except Exception as e:
+        print(f"Stripe checkout error: {e}")
+        return response(500, {"error": "Failed to create checkout session"})
+
+
+def handle_stripe_webhook(event: dict) -> dict:
+    """POST /api/payments/webhook — Process Stripe payment webhook.
+
+    No JWT auth — Stripe signature is the authentication mechanism.
+    """
+    import stripe  # lazy import
+
+    payload = event.get("body", "") or ""
+    if event.get("isBase64Encoded"):
+        payload = base64.b64decode(payload).decode("utf-8")
+
+    sig_header = (event.get("headers") or {}).get("stripe-signature", "")
+    webhook_secret = get_stripe_webhook_secret()
+
+    try:
+        stripe_event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+    except Exception as e:
+        print(f"Stripe webhook signature invalid: {e}")
+        return response(400, {"error": "Invalid webhook signature"})
+
+    if stripe_event["type"] == "checkout.session.completed":
+        session = stripe_event["data"]["object"]
+        user_id = session.get("client_reference_id") or session.get("metadata", {}).get("user_id", "")
+        credits_to_add = int(session.get("metadata", {}).get("credits", "3"))
+
+        if user_id:
+            try:
+                dynamodb.Table(USERS_TABLE).update_item(
+                    Key={"userId": user_id},
+                    UpdateExpression="ADD creditsBalance :n",
+                    ExpressionAttributeValues={":n": Decimal(str(credits_to_add))},
+                )
+                print(f"Added {credits_to_add} credits to user {user_id}")
+            except Exception as e:
+                print(f"Failed to credit user {user_id}: {e}")
+                return response(500, {"error": "Failed to update credit balance"})
+
+    return response(200, {"received": True})
+
+
 def lambda_handler(event, context):
     """Main Lambda handler — routes requests based on path and method."""
     raw_path = event.get("rawPath", "")
@@ -699,6 +824,10 @@ def lambda_handler(event, context):
         return handle_get_career_goals(event)
     elif raw_path == "/api/jobs/scan" and method == "POST":
         return handle_scan_jobs(event)
+    elif raw_path == "/api/payments/create-checkout" and method == "POST":
+        return handle_create_checkout(event)
+    elif raw_path == "/api/payments/webhook" and method == "POST":
+        return handle_stripe_webhook(event)
     elif raw_path == "/api/health":
         return response(200, {"status": "healthy", "environment": ENVIRONMENT})
     else:

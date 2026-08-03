@@ -39,6 +39,21 @@ variable "cognito_user_pool_arn" {
   type = string
 }
 
+variable "stripe_secret_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "stripe_webhook_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "frontend_url" {
+  type        = string
+  description = "CloudFront URL for Stripe redirect (e.g. https://dxxxxxxxxx.cloudfront.net)"
+}
+
 variable "sqs_job_scout_queue_url" {
   type = string
 }
@@ -52,6 +67,18 @@ resource "aws_ssm_parameter" "anthropic_key" {
   name  = "/${var.prefix}/anthropic-api-key"
   type  = "SecureString" # Encrypted with default aws/ssm KMS key (free)
   value = var.anthropic_api_key
+}
+
+resource "aws_ssm_parameter" "stripe_secret_key" {
+  name  = "/${var.prefix}/stripe-secret-key"
+  type  = "SecureString"
+  value = var.stripe_secret_key
+}
+
+resource "aws_ssm_parameter" "stripe_webhook_secret" {
+  name  = "/${var.prefix}/stripe-webhook-secret"
+  type  = "SecureString"
+  value = var.stripe_webhook_secret
 }
 
 # --- IAM Role for Lambda ---
@@ -121,9 +148,13 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Resource = var.sqs_queue_arns
       },
       {
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter"]
-        Resource = aws_ssm_parameter.anthropic_key.arn
+        Effect = "Allow"
+        Action = ["ssm:GetParameter"]
+        Resource = [
+          aws_ssm_parameter.anthropic_key.arn,
+          aws_ssm_parameter.stripe_secret_key.arn,
+          aws_ssm_parameter.stripe_webhook_secret.arn,
+        ]
       }
     ]
   })
@@ -167,10 +198,13 @@ resource "aws_lambda_function" "api_handler" {
 
   environment {
     variables = {
-      ENVIRONMENT          = var.environment
-      ANTHROPIC_PARAM_NAME = aws_ssm_parameter.anthropic_key.name
-      CV_BUCKET            = var.cv_bucket_name
-      SQS_JOB_SCOUT_URL    = var.sqs_job_scout_queue_url
+      ENVIRONMENT               = var.environment
+      ANTHROPIC_PARAM_NAME      = aws_ssm_parameter.anthropic_key.name
+      STRIPE_SECRET_PARAM_NAME  = aws_ssm_parameter.stripe_secret_key.name
+      STRIPE_WEBHOOK_PARAM_NAME = aws_ssm_parameter.stripe_webhook_secret.name
+      FRONTEND_URL              = var.frontend_url
+      CV_BUCKET                 = var.cv_bucket_name
+      SQS_JOB_SCOUT_URL         = var.sqs_job_scout_queue_url
     }
   }
 }
@@ -211,9 +245,9 @@ resource "aws_lambda_function" "cv_tailor" {
 
   environment {
     variables = {
-      ENVIRONMENT         = var.environment
+      ENVIRONMENT          = var.environment
       ANTHROPIC_PARAM_NAME = aws_ssm_parameter.anthropic_key.name
-      CV_BUCKET           = var.cv_bucket_name
+      CV_BUCKET            = var.cv_bucket_name
     }
   }
 }
@@ -328,10 +362,10 @@ output "api_gateway_url" {
 }
 
 output "lambda_function_names" {
-  value = [
-    aws_lambda_function.cv_analyst.function_name,
-    aws_lambda_function.api_handler.function_name,
-    aws_lambda_function.job_scout.function_name,
-    aws_lambda_function.cv_tailor.function_name,
-  ]
+  value = {
+    cv_analyst  = aws_lambda_function.cv_analyst.function_name
+    api_handler = aws_lambda_function.api_handler.function_name
+    job_scout   = aws_lambda_function.job_scout.function_name
+    cv_tailor   = aws_lambda_function.cv_tailor.function_name
+  }
 }

@@ -27,3 +27,21 @@ variable "github_repo" {
   type        = string
   default     = "lbagga2x/AIApply"
 }
+
+variable "stripe_secret_key" {
+  description = "Stripe secret key (sk_test_... or sk_live_...)"
+  type        = string
+  sensitive   = true
+}
+
+variable "stripe_webhook_secret" {
+  description = "Stripe webhook signing secret (whsec_...)"
+  type        = string
+  sensitive   = true
+}
+
+variable "frontend_url" {
+  description = "CloudFront URL for Stripe payment redirects"
+  type        = string
+  default     = ""
+}

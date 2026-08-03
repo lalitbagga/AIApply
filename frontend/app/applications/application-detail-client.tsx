@@ -25,6 +25,7 @@ import {
   tailorApplication,
   updateApplicationStatus,
   saveApplicationNotes,
+  getCareerGoals,
 } from "@/lib/api";
 
 interface Change {
@@ -118,6 +119,7 @@ export default function ApplicationDetailClient() {
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState("");
   const [tailoring, setTailoring] = useState(false);
+  const [creditsBalance, setCreditsBalance] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [statusError, setStatusError] = useState("");
@@ -160,6 +162,11 @@ export default function ApplicationDetailClient() {
       } finally {
         if (mounted) setLoading(false);
       }
+
+      // Fetch credit balance in the background (non-fatal)
+      getCareerGoals()
+        .then((goalsData) => { if (mounted) setCreditsBalance(goalsData.creditsBalance ?? 0); })
+        .catch(() => {});
     }
 
     loadData();
@@ -436,13 +443,27 @@ export default function ApplicationDetailClient() {
             <div className="flex gap-3">
               {isMatched ? (
                 /* Matched: show Tailor CV as primary action */
-                <Button
-                  className="flex-1"
-                  disabled={tailoring}
-                  onClick={handleTailor}
-                >
-                  {tailoring ? "⏳ Queued — tailoring…" : "✨ Tailor CV for this Job"}
-                </Button>
+                <div className="flex-1 flex flex-col gap-2">
+                  <Button
+                    className="w-full"
+                    disabled={tailoring || creditsBalance === 0}
+                    onClick={handleTailor}
+                  >
+                    {tailoring
+                      ? "⏳ Queued — tailoring…"
+                      : creditsBalance === 0
+                      ? "No credits — buy more to tailor"
+                      : creditsBalance !== null
+                      ? `✨ Tailor CV for this Job (${creditsBalance} credit${creditsBalance === 1 ? "" : "s"} left)`
+                      : "✨ Tailor CV for this Job"}
+                  </Button>
+                  {creditsBalance === 0 && (
+                    <p className="text-[12px] text-amber-600 text-center">
+                      <Link href="/settings" className="underline underline-offset-2">Buy credits</Link>
+                      {" "}to tailor CVs ($1 = 3 tailors)
+                    </p>
+                  )}
+                </div>
               ) : (
                 /* All other statuses: show Approve CV */
                 <Button

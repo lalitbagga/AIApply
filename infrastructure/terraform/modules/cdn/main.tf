@@ -8,7 +8,7 @@ variable "environment" {
 
 # --- S3 Bucket for frontend static files ---
 resource "aws_s3_bucket" "frontend" {
-  bucket = "${var.prefix}-frontend"
+  bucket = "${var.prefix}-frontend-924029800762"
 }
 
 resource "aws_s3_bucket_public_access_block" "frontend" {
