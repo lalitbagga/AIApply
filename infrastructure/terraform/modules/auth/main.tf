@@ -10,6 +10,11 @@ variable "environment" {
 resource "aws_cognito_user_pool" "main" {
   name = "${var.prefix}-users"
 
+  # Private access: only administrators can create users.
+  admin_create_user_config {
+    allow_admin_create_user_only = true
+  }
+
   # Allow sign-in with email
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]

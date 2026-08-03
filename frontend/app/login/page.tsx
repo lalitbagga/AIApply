@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { signIn, signOut, isAuthenticated } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -98,12 +97,6 @@ export default function LoginPage() {
               {loading ? "Signing in…" : "Sign In"}
             </Button>
           </form>
-          <p className="text-sm text-center text-muted-foreground mt-4">
-            Don&apos;t have an account?{" "}
-            <Link href="/signup" className="underline hover:text-foreground">
-              Sign up
-            </Link>
-          </p>
         </CardContent>
       </Card>
     </div>
