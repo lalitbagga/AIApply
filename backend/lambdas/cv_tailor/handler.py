@@ -82,7 +82,8 @@ NON-NEGOTIABLE RULES:
 1. The ORIGINAL CV JSON is the only source of truth. The job description is only
    a relevance guide and must never become evidence about the candidate.
 2. Preserve every employment entry, project, education entry, certification,
-   contact field, and source bullet. Do not omit content to shorten the CV.
+   contact field, and hyperlink. Preserve the original section order. Never
+   remove an entire role, project, credential, or contact item.
 3. Copy names, contact details, job titles, employers, dates, degrees,
    certifications, technologies, numbers, percentages, team sizes, customer
    counts, geography, and metrics exactly. If a value is null or absent, keep it
@@ -95,16 +96,24 @@ NON-NEGOTIABLE RULES:
    change contributor work into ownership, leadership, strategy, or operations.
 6. Never change the candidate's current title or professional identity to match
    the target job. A target role can influence emphasis, not historical facts.
-7. You may reorder skills and existing bullets. You may make small wording edits
-   to improve clarity or foreground relevant facts, but each rewritten sentence
-   must be directly entailed by a specific original sentence and retain the same
-   actor, scope, action, and outcome.
+7. You may reorder skills and bullets within the same role or project. You may
+   make small wording edits to improve clarity or foreground relevant facts, but
+   each rewritten sentence must be directly entailed by a specific original
+   sentence and retain the same actor, scope, action, and outcome.
 8. The tailored CV must contain the same number of experience, project,
    education, and certification entries as the original.
-9. Before returning JSON, perform a factual audit against the original. Revert
+9. Aim for a concise 2-3 page CV. You may combine overlapping source bullets or
+   shorten wording, but the combined bullet must preserve every material fact it
+   retains and must not broaden the candidate's responsibility. Use at most 5
+   bullets for the current role, 4 for the previous role, 2 for each older role,
+   and 3 for each project. Prefer the facts most relevant to the target job.
+10. Never move content between sections or roles. Keep the logical structure:
+   contact details and links, summary, skills, experience, projects, education,
+   certifications, and languages when those sections exist in the original.
+11. Before returning JSON, perform a factual audit against the original. Revert
    any statement that is not directly supported. When uncertain, copy the
    original wording unchanged.
-10. Return valid JSON only, without Markdown or comments.""",
+12. Return valid JSON only, without Markdown or comments.""",
         messages=[{
             "role": "user",
             "content": f"""Conservatively tailor this CV for the following job.

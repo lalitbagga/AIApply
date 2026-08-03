@@ -55,11 +55,17 @@ interface ProjectEntry {
   highlights?: string[];
 }
 
+interface LinkEntry {
+  label?: string;
+  url?: string | null;
+}
+
 interface TailoredCV {
   name?: string;
   email?: string;
   phone?: string;
   location?: string;
+  links?: LinkEntry[];
   summary?: string;
   skills?: string[];
   experience?: ExperienceEntry[];
@@ -681,7 +687,11 @@ function formatTailoredCvAsText(cv: TailoredCV) {
   if (cv.name) lines.push(cv.name);
   const contact = [cv.email, cv.phone, cv.location].filter(Boolean).join(" · ");
   if (contact) lines.push(contact);
-  if (cv.name || contact) lines.push("");
+  const links = getCvLinks(cv);
+  if (links.length > 0) {
+    lines.push(links.map(({ label, url }) => `${label}: ${url}`).join(" · "));
+  }
+  if (cv.name || contact || links.length > 0) lines.push("");
 
   if (cv.summary) {
     lines.push("SUMMARY");
@@ -742,8 +752,23 @@ function formatTailoredCvAsText(cv: TailoredCV) {
   return lines.join("\n").trimEnd();
 }
 
+function getCvLinks(cv: TailoredCV) {
+  const emailUrl = cv.email ? `mailto:${cv.email}`.toLowerCase() : "";
+
+  return (cv.links || []).flatMap((link, index) => {
+    const url = link.url?.trim();
+    if (!url || url.toLowerCase() === emailUrl || !/^(https?:|mailto:)/i.test(url)) {
+      return [];
+    }
+
+    return [{ label: link.label?.trim() || `Link ${index + 1}`, url }];
+  });
+}
+
 /* ── Tailored CV renderer ── */
 function TailoredCVView({ cv }: { cv: TailoredCV }) {
+  const links = getCvLinks(cv);
+
   return (
     <div className="space-y-4 text-sm max-h-[60vh] overflow-y-auto pr-1">
       {/* Header */}
@@ -753,6 +778,17 @@ function TailoredCVView({ cv }: { cv: TailoredCV }) {
           {cv.email    && <span>{cv.email}</span>}
           {cv.phone    && <span>{cv.phone}</span>}
           {cv.location && <span>{cv.location}</span>}
+          {links.map(({ label, url }) => (
+            <a
+              key={url}
+              href={url}
+              target={url.startsWith("mailto:") ? undefined : "_blank"}
+              rel={url.startsWith("mailto:") ? undefined : "noopener noreferrer"}
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              {label}
+            </a>
+          ))}
         </div>
       </div>
 
