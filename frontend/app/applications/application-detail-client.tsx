@@ -1,12 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,16 +11,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { isAuthenticated } from "@/lib/auth";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  getApplications,
   approveApplication,
-  getTailoredCV,
   deleteApplication,
+  getApplications,
+  getTailoredCV,
+  saveApplicationNotes,
   tailorApplication,
   updateApplicationStatus,
-  saveApplicationNotes,
 } from "@/lib/api";
+import { isAuthenticated } from "@/lib/auth";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 interface Change {
   type: "added" | "modified" | "removed";
@@ -49,6 +49,12 @@ interface EducationEntry {
   field?: string;
 }
 
+interface ProjectEntry {
+  name?: string;
+  description?: string;
+  highlights?: string[];
+}
+
 interface TailoredCV {
   name?: string;
   email?: string;
@@ -57,6 +63,7 @@ interface TailoredCV {
   summary?: string;
   skills?: string[];
   experience?: ExperienceEntry[];
+  projects?: ProjectEntry[];
   education?: EducationEntry[];
   certifications?: string[];
 }
@@ -703,6 +710,18 @@ function formatTailoredCvAsText(cv: TailoredCV) {
     }
   }
 
+  if (cv.projects && cv.projects.length > 0) {
+    lines.push("PROJECTS");
+    for (const project of cv.projects) {
+      if (project.name) lines.push(project.name);
+      if (project.description) lines.push(project.description);
+      if (project.highlights && project.highlights.length > 0) {
+        for (const highlight of project.highlights) lines.push(`- ${highlight}`);
+      }
+      lines.push("");
+    }
+  }
+
   if (cv.education && cv.education.length > 0) {
     lines.push("EDUCATION");
     for (const edu of cv.education) {
@@ -778,6 +797,33 @@ function TailoredCVView({ cv }: { cv: TailoredCV }) {
                       <li key={j} className="flex gap-1.5 text-muted-foreground">
                         <span className="mt-1 shrink-0">•</span>
                         <span>{h}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Projects */}
+      {cv.projects && cv.projects.length > 0 && (
+        <div>
+          <h4 className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-2">Projects</h4>
+          <div className="space-y-3">
+            {cv.projects.map((project, i) => (
+              <div key={i}>
+                {project.name && <p className="font-semibold">{project.name}</p>}
+                {project.description && (
+                  <p className="text-muted-foreground leading-relaxed">{project.description}</p>
+                )}
+                {project.highlights && project.highlights.length > 0 && (
+                  <ul className="mt-1 space-y-0.5">
+                    {project.highlights.map((highlight, j) => (
+                      <li key={j} className="flex gap-1.5 text-muted-foreground">
+                        <span className="mt-1 shrink-0">•</span>
+                        <span>{highlight}</span>
                       </li>
                     ))}
                   </ul>

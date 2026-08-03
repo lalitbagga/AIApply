@@ -379,7 +379,9 @@ def handle_tailor_application(event: dict) -> dict:
     if not application_id:
         return response(400, {"error": "applicationId required"})
 
-    # Fetch the application to get cvId and jobId for the SQS message
+    # Fetch the application and deliberately move re-tailoring to the user's
+    # latest primary CV. A renamed upload has a different cvId, so reusing the
+    # application's old cvId would silently tailor stale source data.
     table = dynamodb.Table(APPLICATIONS_TABLE)
     item = table.get_item(
         Key={"userId": user_id, "applicationId": application_id}
@@ -388,12 +390,40 @@ def handle_tailor_application(event: dict) -> dict:
     if not item:
         return response(404, {"error": "Application not found"})
 
-    # Update status to tailoring
+    cvs_table = dynamodb.Table(CVS_TABLE)
+    cvs = cvs_table.query(
+        KeyConditionExpression="userId = :uid",
+        ExpressionAttributeValues={":uid": user_id},
+    ).get("Items", [])
+    if not cvs:
+        return response(400, {"error": "Please upload a CV first"})
+
+    primary_cvs = [cv for cv in cvs if cv.get("isPrimary") is True]
+    candidates = primary_cvs or cvs
+
+    def upload_timestamp(cv: dict) -> float:
+        uploaded_at = cv.get("uploadedAt")
+        if uploaded_at:
+            try:
+                return datetime.fromisoformat(uploaded_at).timestamp()
+            except (TypeError, ValueError):
+                pass
+        try:
+            return s3.head_object(Bucket=CV_BUCKET, Key=cv["s3Key"])[
+                "LastModified"
+            ].timestamp()
+        except (BotoCoreError, ClientError, KeyError):
+            return 0
+
+    latest_cv = max(candidates, key=upload_timestamp)
+    latest_cv_id = latest_cv["cvId"]
+
+    # Record exactly which source CV this generation uses.
     table.update_item(
         Key={"userId": user_id, "applicationId": application_id},
-        UpdateExpression="SET #status = :s",
+        UpdateExpression="SET #status = :s, cvId = :cv",
         ExpressionAttributeNames={"#status": "status"},
-        ExpressionAttributeValues={":s": "tailoring"},
+        ExpressionAttributeValues={":s": "tailoring", ":cv": latest_cv_id},
     )
 
     # Send to cv-tailor queue
@@ -401,7 +431,7 @@ def handle_tailor_application(event: dict) -> dict:
         QueueUrl=get_cv_tailor_queue_url(),
         MessageBody=json.dumps({
             "userId": user_id,
-            "cvId": item["cvId"],
+            "cvId": latest_cv_id,
             "applicationId": application_id,
             "jobId": item["jobId"],
         }),
