@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useTheme } from "next-themes";
 import { Sun, Moon, Monitor, Check, ChevronLeft } from "lucide-react";
 import { isAuthenticated, signOut } from "@/lib/auth";
-import { getCareerGoals, saveCareerGoals, scanJobs, deleteAccount, createCheckoutSession } from "@/lib/api";
+import { getCareerGoals, saveCareerGoals, scanJobs, deleteAccount } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,8 +117,6 @@ export default function SettingsPage() {
   const [scanDone, setScanDone] = useState(false);
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [usage, setUsage] = useState<UsageStats | null>(null);
-  const [creditsBalance, setCreditsBalance] = useState<number | null>(null);
-  const [buyingCredits, setBuyingCredits] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -150,20 +148,8 @@ export default function SettingsPage() {
       );
       setLastScannedAt(data.lastScannedAt ?? null);
       if (data.usage) setUsage(data.usage);
-      setCreditsBalance(data.creditsBalance ?? 0);
     }).catch(() => {});
   }, [router]);
-
-  async function handleBuyCredits() {
-    setBuyingCredits(true);
-    try {
-      const { checkoutUrl } = await createCheckoutSession();
-      window.location.href = checkoutUrl;
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to start checkout. Please try again.");
-      setBuyingCredits(false);
-    }
-  }
 
   async function handleScan() {
     setScanning(true);
@@ -400,41 +386,6 @@ export default function SettingsPage() {
             )}
             <p className="text-xs text-muted-foreground">
               ~$0.07 per scan · Haiku model scores 30 jobs · Run daily for fresh results
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* ── CV Tailoring Credits ── */}
-        <Card className="shadow-sm border-border/60">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base">CV Tailoring Credits</CardTitle>
-            <CardDescription>Each credit tailors your CV for one specific job</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-2xl font-bold tabular-nums">
-                  {creditsBalance ?? "—"}
-                </p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">
-                  {creditsBalance === 1 ? "credit remaining" : "credits remaining"}
-                </p>
-              </div>
-              <Button
-                onClick={handleBuyCredits}
-                disabled={buyingCredits}
-                className="shrink-0 h-9 text-[13px]"
-              >
-                {buyingCredits ? "Redirecting…" : "Buy 3 Credits — $1"}
-              </Button>
-            </div>
-            {creditsBalance === 0 && (
-              <div className="text-[13px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl px-3.5 py-2.5">
-                You have no credits left. Purchase more to tailor CVs.
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              $1 = 3 tailored CVs · Powered by Claude Sonnet
             </p>
           </CardContent>
         </Card>
