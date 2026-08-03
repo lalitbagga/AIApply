@@ -74,14 +74,40 @@ def tailor_cv(cv_data: dict, job: dict) -> dict:
 
     message = client.messages.create(
         model="claude-sonnet-4-5-20250929",
-        max_tokens=4096,
-        system="""You are an expert CV writer. Your job is to tailor a candidate's CV
-for a specific role without fabricating experience. You reorder, reframe, and
-emphasize existing experience to match what the employer wants.
-Always be honest — only use information from the original CV.""",
+        max_tokens=8192,
+        system="""You are a conservative CV editor. Your highest priority is factual
+fidelity and completeness, not making the candidate sound more impressive.
+
+NON-NEGOTIABLE RULES:
+1. The ORIGINAL CV JSON is the only source of truth. The job description is only
+   a relevance guide and must never become evidence about the candidate.
+2. Preserve every employment entry, project, education entry, certification,
+   contact field, and source bullet. Do not omit content to shorten the CV.
+3. Copy names, contact details, job titles, employers, dates, degrees,
+   certifications, technologies, numbers, percentages, team sizes, customer
+   counts, geography, and metrics exactly. If a value is null or absent, keep it
+   null or absent; never infer it.
+4. Never invent metrics or vague scale claims such as "thousands", "enterprise
+   grade", "high availability", "eliminated configuration drift", or percentage
+   improvements unless those exact facts exist in the original.
+5. Never upgrade responsibility. In particular, do not change "deployed an
+   application onto an existing cluster" into "architected the cluster"; do not
+   change contributor work into ownership, leadership, strategy, or operations.
+6. Never change the candidate's current title or professional identity to match
+   the target job. A target role can influence emphasis, not historical facts.
+7. You may reorder skills and existing bullets. You may make small wording edits
+   to improve clarity or foreground relevant facts, but each rewritten sentence
+   must be directly entailed by a specific original sentence and retain the same
+   actor, scope, action, and outcome.
+8. The tailored CV must contain the same number of experience, project,
+   education, and certification entries as the original.
+9. Before returning JSON, perform a factual audit against the original. Revert
+   any statement that is not directly supported. When uncertain, copy the
+   original wording unchanged.
+10. Return valid JSON only, without Markdown or comments.""",
         messages=[{
             "role": "user",
-            "content": f"""Tailor this CV for the following job. Return JSON only.
+            "content": f"""Conservatively tailor this CV for the following job.
 
 ORIGINAL CV:
 {cv_json}
@@ -92,24 +118,24 @@ JOB TO APPLY FOR:
 Return this exact JSON structure:
 {{
   "tailoredCV": {{
-    // Same structure as input CV, but tailored:
-    // - Summary rewritten to speak directly to this role
-    // - Skills reordered: most relevant to this job first
-    // - Experience bullets rewritten to emphasise relevant achievements
-    // - Remove or de-emphasise unrelated work
     "name": "...",
-    "email": "...",
-    "summary": "Tailored 2-3 sentence summary for this specific role",
+    "email": "... or null",
+    "phone": "... or null",
+    "location": "... or null",
+    "links": [],
+    "summary": "A factual 2-3 sentence summary emphasizing relevant existing experience",
     "skills": ["most relevant first", ...],
     "experience": [...],
+    "projects": [...],
     "education": [...],
-    "certifications": [...]
+    "certifications": [...],
+    "languages": [...]
   }},
   "changes": [
     {{
-      "type": "added|modified|removed",
-      "section": "summary|skills|experience|education",
-      "description": "What changed and why"
+      "type": "modified|reordered",
+      "section": "summary|skills|experience|projects",
+      "description": "Specific wording/order change and the original fact supporting it"
     }}
   ],
   "atsScore": 85,
@@ -125,6 +151,76 @@ Return this exact JSON structure:
         response_text = response_text.split("```")[1].split("```")[0]
 
     return json.loads(response_text.strip()), message.usage
+
+
+def enforce_factual_invariants(original: dict, tailored: dict) -> dict:
+    """Restore fields the model is never allowed to invent, alter, or omit."""
+    safe = dict(tailored) if isinstance(tailored, dict) else {}
+
+    # These fields are factual records, not tailoring opportunities.
+    for field in (
+        "name",
+        "email",
+        "phone",
+        "location",
+        "links",
+        "education",
+        "certifications",
+        "languages",
+    ):
+        if field in original:
+            safe[field] = original[field]
+
+    original_experience = original.get("experience", [])
+    tailored_experience = safe.get("experience", [])
+    if (
+        not isinstance(tailored_experience, list)
+        or len(tailored_experience) != len(original_experience)
+    ):
+        safe["experience"] = original_experience
+    else:
+        protected_fields = ("title", "company", "startDate", "endDate")
+        for source, edited in zip(original_experience, tailored_experience):
+            if not isinstance(source, dict) or not isinstance(edited, dict):
+                safe["experience"] = original_experience
+                break
+            for field in protected_fields:
+                if field in source:
+                    edited[field] = source[field]
+
+    # Projects must never disappear. Their factual names are immutable.
+    original_projects = original.get("projects", [])
+    tailored_projects = safe.get("projects", [])
+    if not isinstance(tailored_projects, list) or len(tailored_projects) != len(original_projects):
+        safe["projects"] = original_projects
+    else:
+        for source, edited in zip(original_projects, tailored_projects):
+            if not isinstance(source, dict) or not isinstance(edited, dict):
+                safe["projects"] = original_projects
+                break
+            if "name" in source:
+                edited["name"] = source["name"]
+
+    # Skills may be reordered, but no unsupported skill may be introduced and
+    # no source skill may be removed.
+    original_skills = original.get("skills", [])
+    tailored_skills = safe.get("skills", [])
+    if isinstance(original_skills, list):
+        source_by_key = {str(skill).casefold(): skill for skill in original_skills}
+        reordered = []
+        seen = set()
+        if isinstance(tailored_skills, list):
+            for skill in tailored_skills:
+                key = str(skill).casefold()
+                if key in source_by_key and key not in seen:
+                    reordered.append(source_by_key[key])
+                    seen.add(key)
+        reordered.extend(
+            skill for skill in original_skills if str(skill).casefold() not in seen
+        )
+        safe["skills"] = reordered
+
+    return safe
 
 
 def lambda_handler(event, context):
@@ -155,7 +251,9 @@ def lambda_handler(event, context):
             # Tailor the CV
             result, sonnet_usage = tailor_cv(cv_data, job)
             track_sonnet_usage(user_id, sonnet_usage)
-            tailored_cv = result.get("tailoredCV", {})
+            tailored_cv = enforce_factual_invariants(
+                cv_data, result.get("tailoredCV", {})
+            )
             changes = result.get("changes", [])
             ats_score = result.get("atsScore", 0)
             cover_letter = result.get("coverLetter", "")

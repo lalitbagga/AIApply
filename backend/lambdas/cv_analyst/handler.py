@@ -57,14 +57,25 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
 
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
-    """Extract text from a DOCX file."""
+    """Extract visible text and hyperlink targets from a DOCX file."""
     from docx import Document
+    from docx.oxml.ns import qn
 
     doc = Document(io.BytesIO(file_bytes))
-    text = ""
+    lines = []
     for para in doc.paragraphs:
-        text += para.text + "\n"
-    return text
+        line = para.text
+        links = []
+        for hyperlink in para._p.xpath(".//w:hyperlink"):
+            relationship_id = hyperlink.get(qn("r:id"))
+            if relationship_id and relationship_id in doc.part.rels:
+                target = doc.part.rels[relationship_id].target_ref
+                if target not in links:
+                    links.append(target)
+        if links:
+            line = f"{line} [Links: {', '.join(links)}]"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def parse_cv_with_claude(cv_text: str) -> dict:
@@ -73,27 +84,47 @@ def parse_cv_with_claude(cv_text: str) -> dict:
 
     message = client.messages.create(
         model="claude-sonnet-4-5-20250929",
-        max_tokens=4096,
+        max_tokens=8192,
         messages=[
             {
                 "role": "user",
-                "content": f"""Analyze this CV/resume and extract structured data. Return ONLY valid JSON with this exact structure:
+                "content": f"""Extract this CV into structured data without summarizing, improving, or inferring anything.
+
+FACTUAL FIDELITY RULES:
+- Treat the CV text as the only source of truth.
+- Preserve every role, project, bullet, certification, degree, date, metric, and contact detail.
+- Copy job titles, employer names, dates, metrics, and claims exactly as written.
+- If a date or value is absent, use null. Never infer it from role ordering or adjacent entries.
+- Do not upgrade seniority, scope, ownership, leadership, scale, or business impact.
+- Do not turn contributing to, deploying onto, or operating a system into architecting or owning it.
+- Preserve project content in the projects array; never fold projects into employment or drop them.
+- Hyperlink labels such as Email, GitHub, LinkedIn, or Blogsite may lack their underlying URL in extracted text. Use null rather than phrases such as "Not provided in CV".
+
+Return ONLY valid JSON with this exact structure:
 
 {{
   "name": "Full Name",
-  "email": "email@example.com",
+  "email": "email@example.com or null",
   "phone": "phone number or null",
   "location": "city, country or null",
+  "links": [{{"label": "GitHub", "url": null}}],
   "summary": "2-3 sentence professional summary",
   "skills": ["skill1", "skill2", ...],
   "experience": [
     {{
       "title": "Job Title",
       "company": "Company Name",
-      "startDate": "YYYY-MM or approximate",
-      "endDate": "YYYY-MM or Present",
-      "description": "Brief description of role and key achievements",
-      "highlights": ["achievement 1", "achievement 2"]
+      "startDate": "exact source value or null",
+      "endDate": "exact source value or null",
+      "description": "role description from the source, or null",
+      "highlights": ["every source bullet, faithfully preserved"]
+    }}
+  ],
+  "projects": [
+    {{
+      "name": "Project name",
+      "description": "project description from the source",
+      "highlights": ["every source bullet, faithfully preserved"]
     }}
   ],
   "education": [
