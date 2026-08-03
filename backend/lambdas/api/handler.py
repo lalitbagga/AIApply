@@ -379,20 +379,6 @@ def handle_tailor_application(event: dict) -> dict:
     if not application_id:
         return response(400, {"error": "applicationId required"})
 
-    # Atomically check and deduct one credit — fails if balance is 0 or missing
-    users_table = dynamodb.Table(USERS_TABLE)
-    try:
-        users_table.update_item(
-            Key={"userId": user_id},
-            UpdateExpression="ADD creditsBalance :neg",
-            ConditionExpression="creditsBalance >= :one",
-            ExpressionAttributeValues={":neg": Decimal(-1), ":one": Decimal(1)},
-        )
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-            return response(402, {"error": "No credits remaining. Purchase credits to tailor more CVs."})
-        raise
-
     # Fetch the application to get cvId and jobId for the SQS message
     table = dynamodb.Table(APPLICATIONS_TABLE)
     item = table.get_item(
