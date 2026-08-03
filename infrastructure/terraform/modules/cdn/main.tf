@@ -6,6 +6,14 @@ variable "environment" {
   type = string
 }
 
+variable "domain_name" {
+  type = string
+}
+
+variable "acm_certificate_arn" {
+  type = string
+}
+
 # --- S3 Bucket for frontend static files ---
 resource "aws_s3_bucket" "frontend" {
   bucket = "${var.prefix}-frontend-924029800762"
@@ -32,6 +40,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   enabled             = true
   default_root_object = "index.html"
   price_class         = "PriceClass_100" # US + Europe only (cheapest)
+  aliases             = [var.domain_name]
 
   origin {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
@@ -78,7 +87,9 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = var.acm_certificate_arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 }
 

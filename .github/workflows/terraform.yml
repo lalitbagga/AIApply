@@ -22,6 +22,8 @@ env:
   TF_VAR_stripe_secret_key: ${{ secrets.STRIPE_SECRET_KEY }}
   TF_VAR_stripe_webhook_secret: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
   TF_VAR_frontend_url: ${{ vars.CLOUDFRONT_URL }}
+  TF_VAR_custom_domain: ${{ vars.CUSTOM_DOMAIN }}
+  TF_VAR_acm_certificate_arn: ${{ vars.ACM_CERTIFICATE_ARN }}
 
 jobs:
   plan:

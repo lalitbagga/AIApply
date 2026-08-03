@@ -45,3 +45,14 @@ variable "frontend_url" {
   type        = string
   default     = ""
 }
+
+variable "custom_domain" {
+  description = "Custom domain served by CloudFront"
+  type        = string
+  default     = "job.lalitbagga.com"
+}
+
+variable "acm_certificate_arn" {
+  description = "ACM certificate ARN for the custom domain; must be in us-east-1"
+  type        = string
+}
