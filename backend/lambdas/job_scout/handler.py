@@ -7,10 +7,12 @@ using Claude, and saves matches to DynamoDB.
 import json
 import os
 import uuid
-import boto3
-import anthropic
-from decimal import Decimal
 from datetime import datetime, timezone
+from decimal import Decimal
+
+import anthropic
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 
 class DecimalEncoder(json.JSONEncoder):
@@ -52,10 +54,10 @@ def track_haiku_usage(user_id: str, usage) -> None:
             ExpressionAttributeValues={
                 ":it":  Decimal(str(usage.input_tokens)),
                 ":ot":  Decimal(str(usage.output_tokens)),
-                ":one": Decimal("1"),
+                ":one": Decimal(1),
             },
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         print(f"Usage tracking failed (non-fatal): {e}")
 
 _anthropic_client = None
@@ -103,7 +105,7 @@ def scrape_jobs(search_terms: list[str], location: str, num_results: int = 20, h
                 "postedAt": datetime.now(timezone.utc).isoformat(),
             })
         return jobs
-    except Exception as e:
+    except (ImportError, TypeError, ValueError, RuntimeError) as e:
         print(f"JobSpy error: {e}")
         return []
 
@@ -315,7 +317,7 @@ def lambda_handler(event, context):
             print(f"Found {len(matched_jobs)} matches, queued for tailoring")
             return {"statusCode": 200, "body": f"Found {len(matched_jobs)} matches"}
 
-        except Exception as e:
+        except (BotoCoreError, ClientError, KeyError, TypeError, ValueError, json.JSONDecodeError, anthropic.APIError) as e:
             print(f"Error in job scout: {e}")
             import traceback
             traceback.print_exc()

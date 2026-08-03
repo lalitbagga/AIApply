@@ -386,7 +386,7 @@ def handle_tailor_application(event: dict) -> dict:
             Key={"userId": user_id},
             UpdateExpression="ADD creditsBalance :neg",
             ConditionExpression="creditsBalance >= :one",
-            ExpressionAttributeValues={":neg": Decimal("-1"), ":one": Decimal("1")},
+            ExpressionAttributeValues={":neg": Decimal(-1), ":one": Decimal(1)},
         )
     except ClientError as e:
         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
@@ -651,7 +651,7 @@ def handle_delete_account(event: dict) -> dict:
         )
         for item in result.get("Items", []):
             apps_table.delete_item(Key={"userId": user_id, "applicationId": item["applicationId"]})
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         errors.append(f"applications: {e}")
 
     # 2. Delete all CV records
@@ -664,7 +664,7 @@ def handle_delete_account(event: dict) -> dict:
         )
         for item in result.get("Items", []):
             cvs_table.delete_item(Key={"userId": user_id, "cvId": item["cvId"]})
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         errors.append(f"cvs: {e}")
 
     # 3. Delete all S3 objects under uploads/{userId}/ and tailored/{userId}/
@@ -674,13 +674,13 @@ def handle_delete_account(event: dict) -> dict:
             for page in paginator.paginate(Bucket=CV_BUCKET, Prefix=prefix):
                 for obj in page.get("Contents", []):
                     s3.delete_object(Bucket=CV_BUCKET, Key=obj["Key"])
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             errors.append(f"s3 {prefix}: {e}")
 
     # 4. Delete user record (last — keeps auth working until everything else is gone)
     try:
         dynamodb.Table(USERS_TABLE).delete_item(Key={"userId": user_id})
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         errors.append(f"user record: {e}")
 
     if errors:
@@ -743,7 +743,7 @@ def handle_create_checkout(event: dict) -> dict:
             metadata={"user_id": user_id, "credits": "3"},
         )
         return response(200, {"checkoutUrl": session.url})
-    except Exception as e:
+    except stripe.error.StripeError as e:
         print(f"Stripe checkout error: {e}")
         return response(500, {"error": "Failed to create checkout session"})
 
@@ -764,7 +764,7 @@ def handle_stripe_webhook(event: dict) -> dict:
 
     try:
         stripe_event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
-    except Exception as e:
+    except (ValueError, stripe.error.SignatureVerificationError) as e:
         print(f"Stripe webhook signature invalid: {e}")
         return response(400, {"error": "Invalid webhook signature"})
 
@@ -781,7 +781,7 @@ def handle_stripe_webhook(event: dict) -> dict:
                     ExpressionAttributeValues={":n": Decimal(str(credits_to_add))},
                 )
                 print(f"Added {credits_to_add} credits to user {user_id}")
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 print(f"Failed to credit user {user_id}: {e}")
                 return response(500, {"error": "Failed to update credit balance"})
 

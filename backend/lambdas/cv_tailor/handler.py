@@ -6,10 +6,12 @@ generates a company-tailored CV with a tracked diff, and stores the result.
 
 import json
 import os
-import boto3
-import anthropic
-from decimal import Decimal
 from datetime import datetime, timezone
+from decimal import Decimal
+
+import anthropic
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 dynamodb = boto3.resource("dynamodb")
 ssm = boto3.client("ssm")
@@ -42,10 +44,10 @@ def track_sonnet_usage(user_id: str, usage) -> None:
             ExpressionAttributeValues={
                 ":it":  Decimal(str(usage.input_tokens)),
                 ":ot":  Decimal(str(usage.output_tokens)),
-                ":one": Decimal("1"),
+                ":one": Decimal(1),
             },
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         print(f"Usage tracking failed (non-fatal): {e}")
 
 _anthropic_client = None
@@ -192,7 +194,7 @@ def lambda_handler(event, context):
 
             print(f"Tailored CV saved — {len(changes)} changes, ATS={ats_score}")
 
-        except Exception as e:
+        except (BotoCoreError, ClientError, KeyError, TypeError, ValueError, json.JSONDecodeError, anthropic.APIError) as e:
             print(f"Error tailoring CV: {e}")
             import traceback
             traceback.print_exc()

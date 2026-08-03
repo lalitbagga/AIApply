@@ -4,11 +4,13 @@ Parses uploaded CV (PDF/DOCX), extracts structured data using Claude,
 and stores the result in DynamoDB.
 """
 
+import io
 import json
 import os
-import io
-import boto3
+
 import anthropic
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 # Initialize AWS clients
 s3 = boto3.client("s3")
@@ -209,7 +211,7 @@ def lambda_handler(event, context):
                     MessageBody=json.dumps({"userId": user_id, "cvId": cv_id}),
                 )
                 print(f"Career goals already exist — triggered job scout for user {user_id}, cv {cv_id}")
-            except Exception as sqs_err:
+            except (BotoCoreError, ClientError) as sqs_err:
                 print(f"Warning: could not trigger job scout: {sqs_err}")
         else:
             print(f"No career goals yet for user {user_id} — job scout will trigger when goals are saved")
@@ -227,8 +229,8 @@ def lambda_handler(event, context):
             ),
         }
 
-    except Exception as e:
-        print(f"Error processing CV: {str(e)}")
+    except (BotoCoreError, ClientError, KeyError, TypeError, ValueError, json.JSONDecodeError, anthropic.APIError) as e:
+        print(f"Error processing CV: {e!s}")
         import traceback
         traceback.print_exc()
         return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
