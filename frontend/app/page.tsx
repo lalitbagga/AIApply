@@ -10,14 +10,7 @@ export default function LandingPage() {
       <nav className="border-b">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <span className="text-xl font-bold">AIApply</span>
-          <div className="flex items-center gap-4">
-            <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground">
-              Log in
-            </Link>
-            <Button asChild size="sm">
-              <Link href="/signup">Get Started Free</Link>
-            </Button>
-          </div>
+          <span className="text-sm text-muted-foreground">Private access</span>
         </div>
       </nav>
 
@@ -36,9 +29,6 @@ export default function LandingPage() {
           preparing for interviews.
         </p>
         <div className="flex items-center justify-center gap-4">
-          <Button size="lg" asChild>
-            <Link href="/signup">Get Started Free</Link>
-          </Button>
           <Button size="lg" variant="outline" asChild>
             <Link href="#how-it-works">See How It Works</Link>
           </Button>
@@ -118,11 +108,8 @@ export default function LandingPage() {
             Ready to apply smarter?
           </h2>
           <p className="text-lg opacity-90 mb-8">
-            Start with 5 free applications. See the difference quality makes.
+            Access is currently invitation-only.
           </p>
-          <Button size="lg" variant="secondary" asChild>
-            <Link href="/signup">Get Started Free</Link>
-          </Button>
         </div>
       </section>
 
